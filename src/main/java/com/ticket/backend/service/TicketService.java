@@ -1,41 +1,65 @@
 package com.ticket.backend.service;
 
-import com.ticket.backend.constants.TicketConstants;
 import com.ticket.backend.dto.request.CreateTicketRequest;
 import com.ticket.backend.dto.response.TicketResponse;
+import com.ticket.backend.model.Device;
+import com.ticket.backend.model.Operation;
 import com.ticket.backend.model.Ticket;
 import com.ticket.backend.model.TicketStatus;
 import com.ticket.backend.model.ValidationMode;
-import org.springframework.stereotype.Service;
+import com.ticket.backend.repository.DeviceRepository;
 import com.ticket.backend.repository.TicketRepository;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
 public class TicketService {
-    private final TicketRepository ticketRepository;
 
-    public TicketService(TicketRepository repository) {
-        this.ticketRepository = repository;
+    private final TicketRepository ticketRepository;
+    private final DeviceRepository deviceRepository;
+    private final DeviceService deviceService;
+
+    public TicketService(
+            TicketRepository ticketRepository,
+            DeviceRepository deviceRepository,
+            DeviceService deviceService) {
+        this.ticketRepository = ticketRepository;
+        this.deviceRepository = deviceRepository;
+        this.deviceService = deviceService;
     }
 
-    public ValidationMode validateTicket(String barcode) {
-            Optional<Ticket> ticketOpt = ticketRepository.findByBarcode(barcode);
+    public ValidationMode validateTicket(String rfidCardId, String deviceId) {
+        if (isBlank(rfidCardId) || isBlank(deviceId)) {
+            return ValidationMode.INVALID;
+        }
 
-        if (ticketOpt.isEmpty()) {
+        Optional<Ticket> ticketOpt = ticketRepository.findByBarcode(rfidCardId.trim());
+        Optional<Device> deviceOpt = deviceRepository.findByDeviceId(deviceId.trim());
+
+        if (ticketOpt.isEmpty() || deviceOpt.isEmpty()) {
             return ValidationMode.INVALID;
         }
 
         Ticket ticket = ticketOpt.get();
-        Date now = new Date();
+        Device device = deviceOpt.get();
 
-        if (ticket.getExpiresAt().before(now) || ticket.getStatus() != TicketStatus.ACTIVE) {
-            ticket.setStatus(TicketStatus.EXPIRED);
-            ticketRepository.save(ticket);
+        if (!device.isActive()) {
+            return ValidationMode.INVALID;
+        }
+
+        if (!isTicketActive(ticket)) {
+            return ValidationMode.INVALID;
+        }
+
+        Operation operation = deviceService.resolveOperation(device);
+        if (ticket.getBalance() < operation.getOperationFee()) {
             return ValidationMode.INVALID;
         }
 
@@ -43,18 +67,26 @@ public class TicketService {
     }
 
     public Ticket createTicket(CreateTicketRequest request) {
-        String code = UUID.randomUUID()
-                .toString()
-                .replaceAll("[^A-Za-z0-9]", ""); // keep only letters and digits
+        if (request == null || isBlank(request.getRfidCardId())) {
+            throw new IllegalArgumentException("rfidCardId is required");
+        }
+        if (request.getLoadAmount() < 0) {
+            throw new IllegalArgumentException("loadAmount must be >= 0");
+        }
 
-        Date expiration = Date.from(
-                Instant.now().plus(30, ChronoUnit.DAYS)
-        );
+        String cardId = request.getRfidCardId().trim();
+        if (ticketRepository.findByBarcode(cardId).isPresent()) {
+            throw new IllegalArgumentException("Ticket already exists for card: " + cardId);
+        }
+
+        Date expiration = Date.from(Instant.now().plus(30, ChronoUnit.DAYS));
 
         Ticket ticket = new Ticket();
-        ticket.setBarcode(code);
-        ticket.setMode(request.getMode());
-        ticket.setPrice(TicketConstants.modeToPrice.get(request.getMode()));
+        ticket.setBarcode(cardId);
+        ticket.setName(request.getName());
+        ticket.setNumber(request.getNumber());
+        ticket.setBalance(request.getLoadAmount());
+        ticket.setMode(request.getMode() != null ? request.getMode() : ValidationMode.BASIC);
         ticket.setCreatedAt(new Date());
         ticket.setExpiresAt(expiration);
         ticket.setStatus(TicketStatus.ACTIVE);
@@ -62,19 +94,42 @@ public class TicketService {
         return ticketRepository.save(ticket);
     }
 
-    public Ticket createMasterTicket(CreateTicketRequest request) {
-        String code = UUID.randomUUID()
-                .toString()
-                .replaceAll("[^A-Za-z0-9]", "");
+    public Ticket loadMoney(String rfidCardId, int amount) {
+        if (isBlank(rfidCardId)) {
+            throw new IllegalArgumentException("rfidCardId is required");
+        }
+        if (amount <= 0) {
+            throw new IllegalArgumentException("amount must be positive");
+        }
 
-        // 10 years expiration
+        Ticket ticket = ticketRepository.findByBarcode(rfidCardId.trim())
+                .orElseThrow(() -> new IllegalArgumentException("Ticket not found: " + rfidCardId));
+
+        ticket.setBalance(ticket.getBalance() + amount);
+        if (ticket.getStatus() == TicketStatus.EXPIRED && !isExpiredByDate(ticket)) {
+            ticket.setStatus(TicketStatus.ACTIVE);
+        }
+
+        return ticketRepository.save(ticket);
+    }
+
+    public Ticket createMasterTicket(CreateTicketRequest request) {
+        if (request == null || isBlank(request.getRfidCardId())) {
+            throw new IllegalArgumentException("rfidCardId is required");
+        }
+
+        String cardId = request.getRfidCardId().trim();
         Date expiration = Date.from(Instant.now().plus(10, ChronoUnit.YEARS));
 
-        Ticket ticket = new Ticket();
-        ticket.setBarcode(code);
-        ticket.setMode(request.getMode());
-        ticket.setPrice(TicketConstants.modeToPrice.get(request.getMode()));
-        ticket.setCreatedAt(new Date());
+        Ticket ticket = ticketRepository.findByBarcode(cardId).orElse(new Ticket());
+        ticket.setBarcode(cardId);
+        ticket.setName(request.getName());
+        ticket.setNumber(request.getNumber());
+        ticket.setBalance(request.getLoadAmount() > 0 ? request.getLoadAmount() : ticket.getBalance());
+        ticket.setMode(request.getMode() != null ? request.getMode() : ValidationMode.EXTRA);
+        if (ticket.getCreatedAt() == null) {
+            ticket.setCreatedAt(new Date());
+        }
         ticket.setExpiresAt(expiration);
         ticket.setStatus(TicketStatus.ACTIVE);
 
@@ -82,17 +137,11 @@ public class TicketService {
     }
 
     public List<TicketResponse> getAllTickets() {
-        this.invalidateExpiredTickets();
+        invalidateExpiredTickets();
         return ticketRepository.findAllByOrderByCreatedAtDesc()
                 .stream()
                 .filter(ticket -> ticket.getStatus() == TicketStatus.ACTIVE)
-                .map(ticket ->  new TicketResponse(
-                        ticket.getBarcode(),
-                        ticket.getMode(),
-                        ticket.getPrice(),
-                        ticket.getExpiresAt(),
-                        ticket.getCreatedAt()
-                ))
+                .map(TicketResponse::from)
                 .collect(Collectors.toList());
     }
 
@@ -100,45 +149,45 @@ public class TicketService {
         ticketRepository.deleteById(id);
     }
 
-    private String generateBarcode() {
-        return "TICKET-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
-    }
-
     public void invalidateExpiredTickets() {
         Date now = new Date();
-        List<Ticket> tickets = ticketRepository.findAllByOrderByCreatedAtDesc();
-
-        for (Ticket ticket : tickets) {
-            if (ticket.getExpiresAt().before(now) && ticket.getStatus() == TicketStatus.ACTIVE) {
+        for (Ticket ticket : ticketRepository.findAllByOrderByCreatedAtDesc()) {
+            if (isExpiredByDate(ticket) && ticket.getStatus() == TicketStatus.ACTIVE) {
                 ticket.setStatus(TicketStatus.EXPIRED);
                 ticketRepository.save(ticket);
             }
         }
     }
 
-    public String useTicket(String barcode) {
-        Optional<Ticket> ticketOpt = ticketRepository.findByBarcode(barcode);
+    public String useTicket(String rfidCardId, String deviceId) {
+        TicketUseResult result = useTicketWithResult(rfidCardId, deviceId);
+        return result.message();
+    }
 
-        if (ticketOpt.isEmpty()) {
-            return "Ticket not found";
+    public TicketUseResult useTicketWithResult(String rfidCardId, String deviceId) {
+        ValidationMode mode = validateTicket(rfidCardId, deviceId);
+        if (mode == ValidationMode.INVALID) {
+            return new TicketUseResult(false, 0, "Ticket invalid, not found, or insufficient balance");
         }
 
-        Ticket ticket = ticketOpt.get();
-        Date now = new Date();
+        Ticket ticket = ticketRepository.findByBarcode(rfidCardId.trim()).orElseThrow();
+        Device device = deviceRepository.findByDeviceId(deviceId.trim()).orElseThrow();
+        int fee = deviceService.operationFeeFor(device);
 
-        if (ticket.getExpiresAt().before(now) || ticket.getStatus() != TicketStatus.ACTIVE) {
-            return "Ticket is expired or inactive";
+        int newBalance = ticket.getBalance() - fee;
+        ticket.setBalance(newBalance);
+        if (newBalance <= 0) {
+            ticket.setStatus(TicketStatus.EXPIRED);
         }
-
-        ticket.setStatus(TicketStatus.EXPIRED);
         ticketRepository.save(ticket);
-        return "Ticket used successfully";
+
+        return new TicketUseResult(true, newBalance, "OK: remaining balance=" + newBalance);
     }
 
     @Transactional
-    public void invalidateTicket(String ticketCode) {
-        Ticket ticket = ticketRepository.findByBarcode(ticketCode)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found: " + ticketCode));
+    public void invalidateTicket(String rfidCardId) {
+        Ticket ticket = ticketRepository.findByBarcode(rfidCardId)
+                .orElseThrow(() -> new IllegalArgumentException("Ticket not found: " + rfidCardId));
 
         if (ticket.getStatus() != TicketStatus.EXPIRED) {
             ticket.setStatus(TicketStatus.EXPIRED);
@@ -146,8 +195,20 @@ public class TicketService {
         }
     }
 
-    public Ticket getOneTicket(String ticketCode) {
-        return ticketRepository.findByBarcode(ticketCode)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found: " + ticketCode));
+    public Ticket getOneTicket(String rfidCardId) {
+        return ticketRepository.findByBarcode(rfidCardId)
+                .orElseThrow(() -> new IllegalArgumentException("Ticket not found: " + rfidCardId));
+    }
+
+    private boolean isTicketActive(Ticket ticket) {
+        return ticket.getStatus() == TicketStatus.ACTIVE && !isExpiredByDate(ticket);
+    }
+
+    private boolean isExpiredByDate(Ticket ticket) {
+        return ticket.getExpiresAt() != null && ticket.getExpiresAt().before(new Date());
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

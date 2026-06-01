@@ -22,5 +22,6 @@ public class SystemState {
     public int getState() { return state.get(); }
     public int getAlarm() { return alarm.get(); }
     public synchronized String getLastBarcode() { return lastBarcode; }
+    public synchronized void setLastBarcode(String barcode) { this.lastBarcode = barcode; }
     public synchronized void clearBarcode() { this.lastBarcode = null; }
 }

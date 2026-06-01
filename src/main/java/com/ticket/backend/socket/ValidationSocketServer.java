@@ -23,6 +23,12 @@ public class ValidationSocketServer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        Thread t = new Thread(this::listenLoop, "validation-socket");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void listenLoop() {
         try (ServerSocket serverSocket = new ServerSocket()) {
             serverSocket.bind(new InetSocketAddress("0.0.0.0", 5000));
             System.out.println("Validation Socket Server listening on port 5000");
@@ -43,14 +49,19 @@ public class ValidationSocketServer implements CommandLineRunner {
             String input = in.readLine();
 
             if (input.startsWith("USE:")) {
-                String barcode = input.substring(4);
-                String result = ticketService.useTicket(barcode);
+                String[] parts = input.substring(4).split(",", 2);
+                String cardId = parts[0].trim();
+                String deviceId = parts.length > 1 ? parts[1].trim() : "";
+                String result = ticketService.useTicket(cardId, deviceId);
                 out.println(result);
-                System.out.println("[USAGE] Barcode: " + barcode + " → Result: " + result);
+                System.out.println("[USAGE] card=" + cardId + " device=" + deviceId + " → " + result);
             } else {
-                ValidationMode mode = ticketService.validateTicket(input);
+                String[] parts = input.split(",", 2);
+                String cardId = parts[0].trim();
+                String deviceId = parts.length > 1 ? parts[1].trim() : "";
+                ValidationMode mode = ticketService.validateTicket(cardId, deviceId);
                 out.println(mode.name());
-                System.out.println("[VALIDATION] Barcode: " + input + " → Mode: " + mode);
+                System.out.println("[VALIDATION] card=" + cardId + " device=" + deviceId + " → " + mode);
             }
 
         } catch (IOException e) {
