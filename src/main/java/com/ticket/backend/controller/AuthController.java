@@ -1,5 +1,6 @@
 package com.ticket.backend.controller;
 
+import com.ticket.backend.dto.request.RegisterUserRequest;
 import com.ticket.backend.dto.response.LoginResponse;
 import com.ticket.backend.model.User;
 import com.ticket.backend.service.UserService;
@@ -17,8 +18,8 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<String> register(@RequestBody User user) {
-        userService.registerUser(user);
+    public ResponseEntity<String> register(@RequestBody RegisterUserRequest request) {
+        userService.registerUser(request);
         return ResponseEntity.ok("User registered successfully");
     }
 

@@ -15,9 +15,14 @@ public class User {
     private String id;
     private String username;
     private String password; // Store hashed password
+    private UserRole role;
 
     public User(String username, String password) {
         this.username = username;
         this.password = password;
+    }
+
+    public UserRole getRole() {
+        return role == null ? UserRole.OPERATOR : role;
     }
 }
