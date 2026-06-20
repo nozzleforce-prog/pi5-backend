@@ -1,0 +1,21 @@
+# On tanimli operasyonlar ve cihazlar — uygulama basinda MongoDB'ye yazilir
+site:
+  operations:
+    - code: 1
+      name: water
+      fee: 100
+    - code: 2
+      name: foam
+      fee: 150
+    - code: 3
+      name: broom
+      fee: 250
+    - code: 4
+      name: automatic
+      fee: 0
+  devices:
+    - device-id: "1"
+      reader-ip: 169.254.179.2
+      plc-bit: 1
+      operation-code: 3
+      active: true
