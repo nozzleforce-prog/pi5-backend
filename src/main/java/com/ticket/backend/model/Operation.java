@@ -14,6 +14,9 @@ public class Operation {
     private String id;
 
     @Indexed(unique = true)
+    private int operationCode;
+
+    @Indexed(unique = true)
     private String name;
 
     private int operationFee;

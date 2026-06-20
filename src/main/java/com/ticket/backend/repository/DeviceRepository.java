@@ -8,8 +8,7 @@ import java.util.Optional;
 
 public interface DeviceRepository extends MongoRepository<Device, String> {
     Optional<Device> findByDeviceId(String deviceId);
-    Optional<Device> findByDeviceIp(String deviceIp);
-    boolean existsByDeviceIp(String deviceIp);
+    List<Device> findByDeviceIp(String deviceIp);
     List<Device> findAllByOrderByDeviceIdAsc();
     List<Device> findByActiveTrue();
 }

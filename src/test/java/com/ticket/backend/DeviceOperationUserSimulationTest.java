@@ -43,7 +43,7 @@ class DeviceOperationUserSimulationTest {
 
     private static final Random RND = new Random(42);
     private static final List<String> MOCK_SCAN_IPS =
-            List.of("192.168.1.100", "192.168.2.100", "192.168.1.101");
+            List.of("169.254.179.2", "192.168.1.100", "192.168.2.100");
 
     @LocalServerPort
     private int port;

@@ -34,9 +34,6 @@ public class DeviceService {
             throw new IllegalArgumentException("deviceIp is required");
         }
         String ip = deviceIp.trim();
-        if (deviceRepository.existsByDeviceIp(ip)) {
-            throw new IllegalArgumentException("Device already registered for IP: " + ip);
-        }
 
         Operation operation = operationService.getByName(operationName);
 
@@ -50,17 +47,25 @@ public class DeviceService {
         return deviceRepository.save(device);
     }
 
+    public Device addDevice(String deviceIp, int operationCode) {
+        if (deviceIp == null || deviceIp.isBlank()) {
+            throw new IllegalArgumentException("deviceIp is required");
+        }
+        Operation operation = operationService.getByOperationCode(operationCode);
+        Device device = new Device();
+        device.setDeviceIp(deviceIp.trim());
+        device.setOperationId(operation.getId());
+        device.setDeviceId(nextDeviceId());
+        device.setPlcBit(nextPlcBit());
+        device.setActive(true);
+        return deviceRepository.save(device);
+    }
+
     public Device editDevice(String deviceId, String deviceIp, String operationName, Boolean active) {
         Device device = getByDeviceIdOrThrow(deviceId);
 
         if (deviceIp != null && !deviceIp.isBlank()) {
-            String ip = deviceIp.trim();
-            deviceRepository.findByDeviceIp(ip).ifPresent(other -> {
-                if (!other.getId().equals(device.getId())) {
-                    throw new IllegalArgumentException("IP already used: " + ip);
-                }
-            });
-            device.setDeviceIp(ip);
+            device.setDeviceIp(deviceIp.trim());
         }
         if (operationName != null && !operationName.isBlank()) {
             Operation operation = operationService.getByName(operationName);

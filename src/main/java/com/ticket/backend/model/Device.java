@@ -16,7 +16,7 @@ public class Device {
     @Indexed(unique = true)
     private String deviceId;
 
-    @Indexed(unique = true)
+    /** RP2350 / CH9120 ag adresi — birden fazla cihaz ayni okuyucuyu paylasabilir */
     private String deviceIp;
 
     private boolean active = true;

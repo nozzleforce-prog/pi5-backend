@@ -28,6 +28,7 @@ public class OperationService {
         }
 
         Operation op = new Operation();
+        op.setOperationCode(nextOperationCode());
         op.setName(name.trim());
         op.setOperationFee(operationFee);
         return operationRepository.save(op);
@@ -72,6 +73,11 @@ public class OperationService {
         return getOperationOrThrow(operationId);
     }
 
+    public Operation getByOperationCode(int operationCode) {
+        return operationRepository.findByOperationCode(operationCode)
+                .orElseThrow(() -> new IllegalArgumentException("Operation not found for code: " + operationCode));
+    }
+
     public Operation getByName(String name) {
         return operationRepository.findByNameIgnoreCase(name.trim())
                 .orElseThrow(() -> new IllegalArgumentException("Operation not found: " + name));
@@ -86,5 +92,12 @@ public class OperationService {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Operation name is required");
         }
+    }
+
+    private int nextOperationCode() {
+        return operationRepository.findAll().stream()
+                .mapToInt(Operation::getOperationCode)
+                .max()
+                .orElse(0) + 1;
     }
 }
