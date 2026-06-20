@@ -10,6 +10,13 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "java-env.ps1")
 
+# Onceki backend RFID/HTTP portlarini bosalt (Address already in use on :2000)
+foreach ($port in 8080, 8081, 2000) {
+    Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+        ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+}
+Start-Sleep -Seconds 1
+
 $mvnArgs = @()
 if ($SkipTests -or $Goal -ne "test") {
     $mvnArgs += "-DskipTests"

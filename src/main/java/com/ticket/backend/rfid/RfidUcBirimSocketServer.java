@@ -2,6 +2,7 @@ package com.ticket.backend.rfid;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.ticket.backend.model.Device;
 import com.ticket.backend.repository.DeviceRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -19,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -63,7 +65,7 @@ public class RfidUcBirimSocketServer implements CommandLineRunner {
     @Value("${rfid.tcp.unit-connect-enabled:true}")
     private boolean unitConnectEnabled;
 
-    @Value("${rfid.tcp.unit-targets:192.168.1.100:1000,192.168.2.100:1000}")
+    @Value("${rfid.tcp.unit-targets:169.254.179.2:1000}")
     private String unitTargets;
 
     @Value("${rfid.tcp.reconnect-delay-ms:3000}")
@@ -72,7 +74,7 @@ public class RfidUcBirimSocketServer implements CommandLineRunner {
     @Value("${rfid.tcp.connect-timeout-ms:8000}")
     private int connectTimeoutMs;
 
-    @Value("${rfid.tcp.unit-device-ids:192.168.1.100=1,192.168.2.100=1}")
+    @Value("${rfid.tcp.unit-device-ids:169.254.179.2=1}")
     private String unitDeviceIds;
 
     public RfidUcBirimSocketServer(
@@ -210,12 +212,19 @@ public class RfidUcBirimSocketServer implements CommandLineRunner {
         if (host == null || host.isBlank()) {
             return null;
         }
-        return deviceRepository.findByDeviceIp(host)
+        Optional<String> fromDb = deviceRepository.findByDeviceIp(host).stream()
+                .filter(Device::isActive)
+                .findFirst()
+                .or(() -> deviceRepository.findByDeviceIp(host).stream().findFirst())
                 .map(d -> {
                     connectionRegistry.bindHostToDeviceId(host, d.getDeviceId());
+                    rfidScanService.setDeviceIdForHost(host, d.getDeviceId());
                     return d.getDeviceId();
-                })
-                .orElse(null);
+                });
+        if (fromDb.isPresent()) {
+            return fromDb.get();
+        }
+        return rfidScanService.lookupDeviceIdForHost(host).orElse(null);
     }
 
     private static void configureServerSocket(ServerSocket socket) throws IOException {

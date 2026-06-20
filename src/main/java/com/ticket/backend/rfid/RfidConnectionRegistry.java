@@ -10,6 +10,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Canli TCP baglantilari (RP2350). {@link #maxConnections} kadar eszamanli oturum desteklenir.
@@ -23,6 +26,12 @@ public class RfidConnectionRegistry {
     private final Map<String, String> deviceIdByHost = new ConcurrentHashMap<>();
 
     private volatile int maxConnections = 16;
+    private final ScheduledExecutorService scanResumeScheduler =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "rfid-scan-resume");
+                t.setDaemon(true);
+                return t;
+            });
 
     public void setMaxConnections(int max) {
         this.maxConnections = Math.max(1, max);
@@ -68,6 +77,9 @@ public class RfidConnectionRegistry {
         RfidUnitConnection conn = new RfidUnitConnection(deviceId, remoteHost, socket, writer);
         RfidUnitConnection previous = byDeviceId.put(deviceId, conn);
         if (previous != null) {
+            if (previous.socket() == socket) {
+                return;
+            }
             log.info("RFID baglanti yenilendi: deviceId={} host={}", deviceId, remoteHost);
             previous.closeQuietly();
         } else {
@@ -89,16 +101,27 @@ public class RfidConnectionRegistry {
 
     public boolean isAcceptingScans(String deviceId) {
         RfidUnitConnection c = byDeviceId.get(deviceId);
-        return c != null && c.isRfidEnabled();
+        if (c == null) {
+            return true;
+        }
+        return c.isRfidEnabled();
     }
 
     public boolean tryBeginSession(String deviceId) {
         RfidUnitConnection c = byDeviceId.get(deviceId);
         if (c == null) {
+            /* TCP baglantisi yok — PLC / bilet akisi yine de calisabilir */
+            return true;
+        }
+        if (!c.tryBeginSession()) {
             return false;
         }
         c.setRfidEnabled(false);
-        return c.tryBeginSession();
+        return true;
+    }
+
+    public boolean hasLiveConnection(String deviceId) {
+        return byDeviceId.containsKey(deviceId);
     }
 
     public void endSession(String deviceId) {
@@ -106,6 +129,24 @@ public class RfidConnectionRegistry {
         if (c != null) {
             c.endSession();
         }
+    }
+
+    /** Oturumu kapat; taramayi gecikme sonrasi tekrar ac (PLC timeout vb.). */
+    public void endSessionWithScanDelay(String deviceId, long delayMs) {
+        RfidUnitConnection c = byDeviceId.get(deviceId);
+        if (c == null) {
+            return;
+        }
+        c.endSessionKeepingScanDisabled();
+        long delay = Math.max(0, delayMs);
+        scanResumeScheduler.schedule(() -> {
+            RfidUnitConnection live = byDeviceId.get(deviceId);
+            if (live != null) {
+                live.setRfidEnabled(true);
+                log.info("RFID tarama tekrar acildi: deviceId={}", deviceId);
+            }
+        }, delay, TimeUnit.MILLISECONDS);
+        log.info("RFID tarama {} ms kapali: deviceId={}", delay, deviceId);
     }
 
     public boolean sendToDevice(String deviceId, String line) {

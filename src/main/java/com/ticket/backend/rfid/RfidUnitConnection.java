@@ -29,6 +29,10 @@ public final class RfidUnitConnection {
         return remoteHost;
     }
 
+    public Socket socket() {
+        return socket;
+    }
+
     public boolean isRfidEnabled() {
         return rfidEnabled.get() && !sessionBusy.get();
     }
@@ -43,6 +47,12 @@ public final class RfidUnitConnection {
     public void endSession() {
         sessionBusy.set(false);
         rfidEnabled.set(true);
+    }
+
+    /** Oturum bitti; tarama hala kapali (PLC timeout sonrasi gecikmeli acilir). */
+    public void endSessionKeepingScanDisabled() {
+        sessionBusy.set(false);
+        rfidEnabled.set(false);
     }
 
     public void setRfidEnabled(boolean enabled) {

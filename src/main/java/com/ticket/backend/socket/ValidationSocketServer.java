@@ -1,6 +1,6 @@
 package com.ticket.backend.socket;
 
-import com.ticket.backend.model.ValidationMode;
+import com.ticket.backend.model.TicketStatus;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import com.ticket.backend.service.TicketService;
@@ -59,9 +59,9 @@ public class ValidationSocketServer implements CommandLineRunner {
                 String[] parts = input.split(",", 2);
                 String cardId = parts[0].trim();
                 String deviceId = parts.length > 1 ? parts[1].trim() : "";
-                ValidationMode mode = ticketService.validateTicket(cardId, deviceId);
-                out.println(mode.name());
-                System.out.println("[VALIDATION] card=" + cardId + " device=" + deviceId + " → " + mode);
+                TicketStatus status = ticketService.validateTicket(cardId, deviceId);
+                out.println(status.name());
+                System.out.println("[VALIDATION] card=" + cardId + " device=" + deviceId + " → " + status);
             }
 
         } catch (IOException e) {

@@ -44,16 +44,20 @@ public class RfidScanService {
     }
 
     private void publishScan(RfidScanEvent event) {
-        if (!connectionRegistry.isAcceptingScans(event.deviceId())) {
-            log.debug("RFID kuyruga alinmadi (cihaz mesgul/kapali): deviceId={}", event.deviceId());
-            return;
-        }
         scanQueue.offer(event);
         log.info("[RFID] deviceId={} cardId={} from {}", event.deviceId(), event.cardId(), event.remoteAddress());
         if (consolePrint) {
             System.out.printf("%n>>> KART ID: %s  (cihaz: %s)  [%s]%n%n",
                     event.cardId(), event.deviceId(), event.remoteAddress());
         }
+    }
+
+    public Optional<String> lookupDeviceIdForHost(String host) {
+        String key = normalizeHost(host);
+        if (key.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(deviceIdByHost.get(key));
     }
 
     public RfidScanEvent pollScan() {

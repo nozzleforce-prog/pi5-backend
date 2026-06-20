@@ -1,6 +1,7 @@
 package com.ticket.backend.rfid;
 
 import com.ticket.backend.model.Device;
+import com.ticket.backend.model.TicketStatus;
 import com.ticket.backend.plc.PlcBitService;
 import com.ticket.backend.repository.DeviceRepository;
 import com.ticket.backend.service.TicketService;
@@ -15,7 +16,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Tek RFID okuma olayi icin PLC + bilet + RP2350 yanit akisi (cihaz basina thread).
+ * RFID okuma + PLC mode/state (40001/40002) + bilet kullanimi.
+ * Akis: DB eslesmesi -> mode bit 1 -> state=1 bekle -> useTicket -> state sifirlanana kadar bekle -> mode temizle.
  */
 @Service
 public class RfidSessionHandler {
@@ -26,8 +28,10 @@ public class RfidSessionHandler {
     private final TicketService ticketService;
     private final PlcBitService plcBitService;
     private final RfidConnectionRegistry connectionRegistry;
+    private final RfidCardLookupService rfidCardLookupService;
     private final boolean plcEnabled;
     private final long machineStartTimeoutMs;
+    private final long scanResumeDelayMs;
     private final long statePollIntervalMs;
     private final ExecutorService sessionPool;
 
@@ -36,16 +40,20 @@ public class RfidSessionHandler {
             TicketService ticketService,
             PlcBitService plcBitService,
             RfidConnectionRegistry connectionRegistry,
+            RfidCardLookupService rfidCardLookupService,
             @Value("${plc.enabled:true}") boolean plcEnabled,
-            @Value("${plc.machine-start-timeout-ms:30000}") long machineStartTimeoutMs,
+            @Value("${plc.machine-start-timeout-ms:5000}") long machineStartTimeoutMs,
+            @Value("${plc.scan-resume-delay-ms:5000}") long scanResumeDelayMs,
             @Value("${plc.state-poll-interval-ms:200}") long statePollIntervalMs,
             @Value("${rfid.max-sessions:16}") int maxSessions) {
         this.deviceRepository = deviceRepository;
         this.ticketService = ticketService;
         this.plcBitService = plcBitService;
         this.connectionRegistry = connectionRegistry;
+        this.rfidCardLookupService = rfidCardLookupService;
         this.plcEnabled = plcEnabled;
         this.machineStartTimeoutMs = machineStartTimeoutMs;
+        this.scanResumeDelayMs = scanResumeDelayMs;
         this.statePollIntervalMs = statePollIntervalMs;
         this.sessionPool = Executors.newFixedThreadPool(maxSessions, r -> {
             Thread t = new Thread(r, "rfid-session");
@@ -62,6 +70,7 @@ public class RfidSessionHandler {
     private void processSession(RfidScanEvent event) {
         String deviceId = event.deviceId();
         String cardId = event.cardId();
+        boolean delayScanResume = false;
 
         if (!connectionRegistry.tryBeginSession(deviceId)) {
             log.debug("RFID oturum atlandi (mesgul/kapali): deviceId={} cardId={}", deviceId, cardId);
@@ -71,24 +80,44 @@ public class RfidSessionHandler {
 
         Optional<Device> deviceOpt = deviceRepository.findByDeviceId(deviceId);
         if (deviceOpt.isEmpty() || !deviceOpt.get().isActive()) {
-            failAndRelease(deviceId, "UNKNOWN_DEVICE");
+            fail(deviceId, "UNKNOWN_DEVICE");
+            connectionRegistry.endSession(deviceId);
             return;
         }
 
         Device device = deviceOpt.get();
         int plcBit = device.getPlcBit();
+        log.info("RFID cihaz eslesti: deviceId={} plcBit={} readerIp={}", deviceId, plcBit, device.getDeviceIp());
+
+        rfidCardLookupService.lookup(event);
+
+        if (ticketService.validateTicket(cardId, deviceId) != TicketStatus.ACTIVE) {
+            log.warn("Gecersiz bilet veya yetersiz bakiye: cardId={} deviceId={}", cardId, deviceId);
+            fail(deviceId, "TICKET_INVALID");
+            connectionRegistry.endSession(deviceId);
+            return;
+        }
 
         try {
             if (plcEnabled) {
-                plcBitService.setModeBit(plcBit, true);
-                log.info("PLC mode bit acildi: deviceId={} plcBit={}", deviceId, plcBit);
-
-                if (!waitForMachineStart(plcBit)) {
-                    log.warn("PLC state bit 1 olmadi (timeout): deviceId={}", deviceId);
-                    plcBitService.clearModeBit(plcBit);
-                    failAndRelease(deviceId, "PLC_TIMEOUT");
+                if (!plcBitService.setModeBit(plcBit, true)) {
+                    log.error("PLC mode yazilamadi: deviceId={} plcBit={} register=40001", deviceId, plcBit);
+                    fail(deviceId, "PLC_WRITE_FAILED");
+                    connectionRegistry.endSession(deviceId);
                     return;
                 }
+                log.info("PLC mode bit set: deviceId={} plcBit={}", deviceId, plcBit);
+
+                if (!waitForMachineStart(plcBit)) {
+                    log.warn("PLC state bit aktif olmadi (timeout {} ms): deviceId={} plcBit={}",
+                            machineStartTimeoutMs, deviceId, plcBit);
+                    plcBitService.clearModeBit(plcBit);
+                    fail(deviceId, "PLC_TIMEOUT");
+                    delayScanResume = true;
+                    return;
+                }
+
+                log.info("PLC state aktif — makine basladi: deviceId={} plcBit={}", deviceId, plcBit);
             }
 
             TicketUseResult useResult = ticketService.useTicketWithResult(cardId, deviceId);
@@ -96,27 +125,31 @@ public class RfidSessionHandler {
                 if (plcEnabled) {
                     plcBitService.clearModeBit(plcBit);
                 }
-                failAndRelease(deviceId, "TICKET_INVALID");
+                fail(deviceId, "TICKET_INVALID");
                 return;
             }
 
             String okLine = "OK,deviceId=" + deviceId + ",cardId=" + cardId + ",balance=" + useResult.remainingBalance();
             connectionRegistry.sendToDevice(deviceId, okLine);
-            log.info("Bilet kullanildi: {} -> balance={}", deviceId, useResult.remainingBalance());
+            log.info("Bilet kullanildi: deviceId={} cardId={} balance={}", deviceId, cardId, useResult.remainingBalance());
 
             if (plcEnabled) {
                 waitForMachineStop(plcBit);
                 plcBitService.clearModeBit(plcBit);
-                log.info("PLC cycle tamamlandi: deviceId={}", deviceId);
+                log.info("PLC cycle tamamlandi (state sifirlandi): deviceId={}", deviceId);
             }
         } catch (Exception e) {
             log.error("RFID oturum hata deviceId={}: {}", deviceId, e.getMessage(), e);
             if (plcEnabled) {
                 plcBitService.clearModeBit(plcBit);
             }
-            failAndRelease(deviceId, "ERROR");
+            fail(deviceId, "ERROR");
         } finally {
-            connectionRegistry.endSession(deviceId);
+            if (delayScanResume) {
+                connectionRegistry.endSessionWithScanDelay(deviceId, scanResumeDelayMs);
+            } else {
+                connectionRegistry.endSession(deviceId);
+            }
         }
     }
 
@@ -137,8 +170,7 @@ public class RfidSessionHandler {
         }
     }
 
-    private void failAndRelease(String deviceId, String reason) {
+    private void fail(String deviceId, String reason) {
         connectionRegistry.sendToDevice(deviceId, "FAIL,deviceId=" + deviceId + ",reason=" + reason);
-        connectionRegistry.endSession(deviceId);
     }
 }

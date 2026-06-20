@@ -1,5 +1,6 @@
 package com.ticket.backend.plc;
 
+import com.ticket.backend.rfid.RfidCardLookupService;
 import com.ticket.backend.rfid.RfidScanEvent;
 import com.ticket.backend.rfid.RfidScanService;
 import org.slf4j.Logger;
@@ -9,7 +10,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
- * Test modu: PLC yok; sadece {@link RfidScanService} kuyrugundan kart (barcode) ID okur.
+ * Test modu: PLC yok; RFID okumalarinda DB'deki kart + cihaz bilgisini terminale yazar.
  * Calistirma: --spring.profiles.active=rfid-test
  */
 @Component
@@ -19,10 +20,15 @@ public class MainProcessorTest implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(MainProcessorTest.class);
 
     private final RfidScanService rfidScanService;
+    private final RfidCardLookupService rfidCardLookupService;
     private final SystemState systemState;
 
-    public MainProcessorTest(RfidScanService rfidScanService, SystemState systemState) {
+    public MainProcessorTest(
+            RfidScanService rfidScanService,
+            RfidCardLookupService rfidCardLookupService,
+            SystemState systemState) {
         this.rfidScanService = rfidScanService;
+        this.rfidCardLookupService = rfidCardLookupService;
         this.systemState = systemState;
     }
 
@@ -34,19 +40,16 @@ public class MainProcessorTest implements CommandLineRunner {
     }
 
     private void rfidLoop() {
-        log.info("RFID test modu — PLC devre disi, kart okumalari dinleniyor...");
+        log.info("RFID test modu — kart okumalari DB ile eslestiriliyor (PLC kapali)...");
+        System.out.println("=== RFID test: site-config cihaz/operasyon yuklendi. Kart okutun. ===");
         while (!Thread.currentThread().isInterrupted()) {
             RfidScanEvent event = rfidScanService.pollScan();
             if (event != null) {
-                onCardScanned(event);
+                systemState.setLastBarcode(event.cardId());
+                rfidCardLookupService.lookup(event);
             }
             sleepQuietly(50);
         }
-    }
-
-    private void onCardScanned(RfidScanEvent event) {
-        systemState.setLastBarcode(event.cardId());
-        log.info("[RFID-TEST] islendi cardId={} deviceId={}", event.cardId(), event.deviceId());
     }
 
     private static void sleepQuietly(long ms) {
