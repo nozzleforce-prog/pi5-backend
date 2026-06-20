@@ -1,5 +1,8 @@
 package com.ticket.backend.model;
 
 public enum TicketStatus {
-    EXPIRED, ACTIVE
+    ACTIVE,
+    INACTIVE,
+    /** Eski kayitlar — kullanilamaz, listede gorunur */
+    EXPIRED
 }

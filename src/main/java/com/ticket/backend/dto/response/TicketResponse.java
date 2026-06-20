@@ -1,7 +1,7 @@
 package com.ticket.backend.dto.response;
 
 import com.ticket.backend.model.Ticket;
-import com.ticket.backend.model.ValidationMode;
+import com.ticket.backend.model.TicketStatus;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -13,25 +13,22 @@ public class TicketResponse {
     private String rfidCardId;
     private String name;
     private String number;
-    private ValidationMode mode;
+    private TicketStatus status;
     private int balance;
-    private Date expiration;
     private Date createdAt;
 
     public TicketResponse(
             String rfidCardId,
             String name,
             String number,
-            ValidationMode mode,
+            TicketStatus status,
             int balance,
-            Date expiration,
             Date createdAt) {
         this.rfidCardId = rfidCardId;
         this.name = name;
         this.number = number;
-        this.mode = mode;
+        this.status = status;
         this.balance = balance;
-        this.expiration = expiration;
         this.createdAt = createdAt;
     }
 
@@ -40,9 +37,8 @@ public class TicketResponse {
                 ticket.getBarcode(),
                 ticket.getName(),
                 ticket.getNumber(),
-                ticket.getMode(),
+                ticket.getStatus(),
                 ticket.getBalance(),
-                ticket.getExpiresAt(),
                 ticket.getCreatedAt()
         );
     }

@@ -23,7 +23,5 @@ public class Ticket {
     private String number;
     private int balance;
     private Date createdAt;
-    private Date expiresAt;
     private TicketStatus status;
-    private ValidationMode mode;
 }

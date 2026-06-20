@@ -3,9 +3,10 @@ package com.ticket.backend.controller;
 import com.ticket.backend.dto.request.CardDeviceRequest;
 import com.ticket.backend.dto.request.CreateTicketRequest;
 import com.ticket.backend.dto.request.LoadMoneyRequest;
+import com.ticket.backend.dto.request.UpdateTicketRequest;
 import com.ticket.backend.dto.response.TicketResponse;
 import com.ticket.backend.model.Ticket;
-import com.ticket.backend.model.ValidationMode;
+import com.ticket.backend.model.TicketStatus;
 import com.ticket.backend.service.TicketService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -37,10 +38,10 @@ public class TicketController {
 
     @PostMapping("/validate")
     public ResponseEntity<Map<String, String>> validate(@RequestBody CardDeviceRequest request) {
-        ValidationMode mode = ticketService.validateTicket(
+        TicketStatus status = ticketService.validateTicket(
                 request.getRfidCardId(),
                 request.getDeviceId());
-        return ResponseEntity.ok(Map.of("mode", mode.name()));
+        return ResponseEntity.ok(Map.of("status", status.name()));
     }
 
     @PostMapping("/use")
@@ -62,14 +63,28 @@ public class TicketController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{rfidCardId}/invalidate")
-    public ResponseEntity<Void> invalidateTicket(@PathVariable String rfidCardId) {
-        ticketService.invalidateTicket(rfidCardId);
-        return ResponseEntity.ok().build();
+    @PostMapping("/{rfidCardId}/deactivate")
+    public ResponseEntity<TicketResponse> deactivateTicket(@PathVariable String rfidCardId) {
+        ticketService.setTicketStatus(rfidCardId, TicketStatus.INACTIVE);
+        return ResponseEntity.ok(TicketResponse.from(ticketService.getOneTicket(rfidCardId)));
+    }
+
+    @PostMapping("/{rfidCardId}/activate")
+    public ResponseEntity<TicketResponse> activateTicket(@PathVariable String rfidCardId) {
+        ticketService.setTicketStatus(rfidCardId, TicketStatus.ACTIVE);
+        return ResponseEntity.ok(TicketResponse.from(ticketService.getOneTicket(rfidCardId)));
     }
 
     @GetMapping("/{rfidCardId}")
     public ResponseEntity<TicketResponse> getOneTicket(@PathVariable String rfidCardId) {
         return ResponseEntity.ok(TicketResponse.from(ticketService.getOneTicket(rfidCardId)));
+    }
+
+    @PutMapping("/{rfidCardId}")
+    public ResponseEntity<TicketResponse> updateTicket(
+            @PathVariable String rfidCardId,
+            @RequestBody UpdateTicketRequest request) {
+        Ticket ticket = ticketService.updateTicket(rfidCardId, request);
+        return ResponseEntity.ok(TicketResponse.from(ticket));
     }
 }
