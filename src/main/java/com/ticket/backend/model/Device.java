@@ -25,4 +25,7 @@ public class Device {
     private String operationId;
 
     private int plcBit;
+
+    /** p4-nano | rp2350 — TCP protokol ailesi */
+    private String readerType = "p4-nano";
 }

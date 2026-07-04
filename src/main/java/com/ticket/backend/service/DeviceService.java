@@ -112,6 +112,11 @@ public class DeviceService {
         return resolveOperation(device).getOperationFee();
     }
 
+    public int operationDurationSecondsFor(Device device) {
+        Operation op = resolveOperation(device);
+        return op.getDurationSeconds() > 0 ? op.getDurationSeconds() : 30;
+    }
+
     private String nextDeviceId() {
         int max = deviceRepository.findAll().stream()
                 .map(Device::getDeviceId)

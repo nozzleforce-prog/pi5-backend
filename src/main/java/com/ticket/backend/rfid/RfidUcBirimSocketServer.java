@@ -171,7 +171,7 @@ public class RfidUcBirimSocketServer implements CommandLineRunner {
         AtomicInteger active = activeByTarget.computeIfAbsent(targetKey, k -> new AtomicInteger(0));
         active.incrementAndGet();
         String host = RfidScanService.normalizeHost(remoteLabel);
-        String deviceId = resolveDeviceIdForHost(host);
+        List<String> deviceIds = resolveDeviceIdsForHost(host);
         PrintWriter writer;
         try {
             writer = new PrintWriter(
@@ -181,9 +181,10 @@ public class RfidUcBirimSocketServer implements CommandLineRunner {
             return;
         }
 
-        final String[] boundDeviceId = {deviceId};
-        if (boundDeviceId[0] != null) {
-            connectionRegistry.register(boundDeviceId[0], host, socket, writer);
+        if (!deviceIds.isEmpty()) {
+            for (String deviceId : deviceIds) {
+                connectionRegistry.register(deviceId, host, socket, writer);
+            }
         }
 
         try {
@@ -191,40 +192,43 @@ public class RfidUcBirimSocketServer implements CommandLineRunner {
             InputStream in = socket.getInputStream();
             RfidTcpLineReader reader = new RfidTcpLineReader();
             reader.readLoop(in, line -> rfidScanService.parseLine(line, remoteLabel).ifPresent(event -> {
-                if (boundDeviceId[0] == null && !"unknown".equals(event.deviceId())) {
-                    boundDeviceId[0] = event.deviceId();
-                    connectionRegistry.register(boundDeviceId[0], host, socket, writer);
+                if (!"unknown".equals(event.deviceId()) && !connectionRegistry.hasLiveConnection(event.deviceId())) {
+                    connectionRegistry.register(event.deviceId(), host, socket, writer);
                 }
                 rfidScanService.enqueueScan(event);
             }));
         } catch (IOException e) {
             log.debug("RFID okuma bitti {}: {}", remoteLabel, e.getMessage());
         } finally {
-            if (boundDeviceId[0] != null) {
-                connectionRegistry.unregister(boundDeviceId[0]);
-            }
+            connectionRegistry.unregisterSocket(socket);
             active.decrementAndGet();
             log.info("RFID baglanti kapandi: {}", remoteLabel);
         }
     }
 
-    private String resolveDeviceIdForHost(String host) {
+    private List<String> resolveDeviceIdsForHost(String host) {
         if (host == null || host.isBlank()) {
-            return null;
+            return List.of();
         }
-        Optional<String> fromDb = deviceRepository.findByDeviceIp(host).stream()
+        List<Device> devices = deviceRepository.findByDeviceIp(host);
+        List<Device> activeDevices = devices.stream()
                 .filter(Device::isActive)
-                .findFirst()
-                .or(() -> deviceRepository.findByDeviceIp(host).stream().findFirst())
-                .map(d -> {
+                .toList();
+        List<Device> mappedDevices = activeDevices.isEmpty() ? devices : activeDevices;
+        if (!mappedDevices.isEmpty()) {
+            mappedDevices.forEach(d -> {
                     connectionRegistry.bindHostToDeviceId(host, d.getDeviceId());
+                    connectionRegistry.setReaderType(d.getDeviceId(),
+                            RfidReaderType.fromConfig(d.getReaderType()));
                     rfidScanService.setDeviceIdForHost(host, d.getDeviceId());
-                    return d.getDeviceId();
                 });
-        if (fromDb.isPresent()) {
-            return fromDb.get();
+            return mappedDevices.stream()
+                    .map(Device::getDeviceId)
+                    .toList();
         }
-        return rfidScanService.lookupDeviceIdForHost(host).orElse(null);
+        return rfidScanService.lookupDeviceIdForHost(host)
+                .map(List::of)
+                .orElseGet(List::of);
     }
 
     private static void configureServerSocket(ServerSocket socket) throws IOException {

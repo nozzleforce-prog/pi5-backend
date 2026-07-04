@@ -6,8 +6,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * GMT Suite holding register'lari: modBilgisi (40001), durumBilgisi (40002).
- * Her cihaz {@code site-config.yml} icindeki {@code plc-bit} ile mod register'inda bir bit kullanir.
+ * GMT Suite holding register'lari: modBilgisi (40001), durumBilgisi (40002), time (40004).
+ * Time register tek ve tum cihazlar icin paylasilir — handshake senkronize edilir.
  */
 @Service
 public class PlcBitService {
@@ -16,12 +16,16 @@ public class PlcBitService {
 
     private final PlcService plc;
     private final SystemState sysState;
+    private final Object handshakeLock = new Object();
 
     @Value("${plc.mode-register:40001}")
     private int modeRegister;
 
     @Value("${plc.state-register:40002}")
     private int stateRegister;
+
+    @Value("${plc.time-register:40004}")
+    private int timeRegister;
 
     @Value("${plc.state-started-bit-value:1}")
     private int stateStartedBitValue;
@@ -32,11 +36,89 @@ public class PlcBitService {
     }
 
     /**
-     * Mod register'inda (40001) cihazin plcBit indeksini ac/kapat (read-modify-write).
-     *
-     * @return true if Modbus write succeeded
+     * Paylasilan time register + mode bit handshake (sirasiyla mode ON, sonra time yaz).
+     * Time register birimi: saniye, cozunurluk 1 (tam saniye).
      */
+    public boolean beginHandshake(int plcBit, int durationSeconds) {
+        synchronized (handshakeLock) {
+            if (durationSeconds < 0) {
+                throw new IllegalArgumentException("durationSeconds must be >= 0");
+            }
+            if (!applyModeBit(plcBit, true)) {
+                return false;
+            }
+            if (!writeTimeRegister(durationSeconds)) {
+                applyModeBit(plcBit, false);
+                return false;
+            }
+            log.info("PLC handshake basladi: plcBit={} durationSec={}", plcBit, durationSeconds);
+            return true;
+        }
+    }
+
+    /** Timeout veya iptal: mode bit + time register sifirla. */
+    public void resetHandshake(int plcBit) {
+        synchronized (handshakeLock) {
+            applyModeBit(plcBit, false);
+            writeTimeRegister(0);
+            log.info("PLC handshake sifirlandi: plcBit={}", plcBit);
+        }
+    }
+
+    /** Makine durdu: yalnizca mode bit kapat (time sonraki handshake ile ustune yazilir). */
+    public void clearModeBit(int plcBit) {
+        synchronized (handshakeLock) {
+            applyModeBit(plcBit, false);
+        }
+    }
+
     public boolean setModeBit(int plcBit, boolean on) {
+        synchronized (handshakeLock) {
+            return applyModeBit(plcBit, on);
+        }
+    }
+
+    public boolean isStateBitActive(int plcBit) {
+        Integer state = plc.readRegister(stateRegister);
+        if (state == null) {
+            return false;
+        }
+        sysState.update(null, state, null, null);
+        int mask = bitMask(plcBit);
+        if (stateStartedBitValue == 1) {
+            return (state & mask) != 0;
+        }
+        return (state & mask) == mask;
+    }
+
+    public boolean isStateBitClear(int plcBit) {
+        return !isStateBitActive(plcBit);
+    }
+
+    public Integer readModeRegister() {
+        return plc.readRegister(modeRegister);
+    }
+
+    public Integer readStateRegister() {
+        return plc.readRegister(stateRegister);
+    }
+
+    public Integer readTimeRegister() {
+        return plc.readRegister(timeRegister);
+    }
+
+    private boolean writeTimeRegister(int seconds) {
+        boolean ok = plc.writeRegister(timeRegister, seconds);
+        if (ok) {
+            Integer readback = plc.readRegister(timeRegister);
+            log.info("PLC time register {} = {} (readback={})", timeRegister, seconds, readback);
+        } else {
+            log.error("PLC time yazilamadi: register={} value={}", timeRegister, seconds);
+        }
+        return ok;
+    }
+
+    private boolean applyModeBit(int plcBit, boolean on) {
         int mask = bitMask(plcBit);
         Integer current = plc.readRegister(modeRegister);
         int value = current != null ? current : 0;
@@ -63,35 +145,6 @@ public class PlcBitService {
             log.error("PLC mode yazilamadi: register={} plcBit={} hedefDeger={}", modeRegister, plcBit, value);
         }
         return ok;
-    }
-
-    public void clearModeBit(int plcBit) {
-        setModeBit(plcBit, false);
-    }
-
-    public boolean isStateBitActive(int plcBit) {
-        Integer state = plc.readRegister(stateRegister);
-        if (state == null) {
-            return false;
-        }
-        sysState.update(null, state, null, null);
-        int mask = bitMask(plcBit);
-        if (stateStartedBitValue == 1) {
-            return (state & mask) != 0;
-        }
-        return (state & mask) == mask;
-    }
-
-    public boolean isStateBitClear(int plcBit) {
-        return !isStateBitActive(plcBit);
-    }
-
-    public Integer readModeRegister() {
-        return plc.readRegister(modeRegister);
-    }
-
-    public Integer readStateRegister() {
-        return plc.readRegister(stateRegister);
     }
 
     private static int bitMask(int plcBit) {

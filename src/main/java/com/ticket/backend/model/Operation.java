@@ -20,4 +20,7 @@ public class Operation {
     private String name;
 
     private int operationFee;
+
+    /** Makine calisma suresi (saniye, cozunurluk 1) — PLC time register degerine yazilir */
+    private int durationSeconds;
 }

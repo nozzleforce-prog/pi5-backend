@@ -15,7 +15,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Canli TCP baglantilari (RP2350). {@link #maxConnections} kadar eszamanli oturum desteklenir.
+ * Canli TCP baglantilari (ESP32-P4-NANO / RP2350). {@link #maxConnections} kadar eszamanli oturum desteklenir.
  */
 @Component
 public class RfidConnectionRegistry {
@@ -24,6 +24,8 @@ public class RfidConnectionRegistry {
 
     private final Map<String, RfidUnitConnection> byDeviceId = new ConcurrentHashMap<>();
     private final Map<String, String> deviceIdByHost = new ConcurrentHashMap<>();
+    private final Map<String, String> hostByDeviceId = new ConcurrentHashMap<>();
+    private final Map<String, RfidReaderType> readerTypeByDeviceId = new ConcurrentHashMap<>();
 
     private volatile int maxConnections = 16;
     private final ScheduledExecutorService scanResumeScheduler =
@@ -51,7 +53,10 @@ public class RfidConnectionRegistry {
 
     public void bindHostToDeviceId(String host, String deviceId) {
         if (host != null && deviceId != null && !host.isBlank() && !deviceId.isBlank()) {
-            deviceIdByHost.put(host.trim(), deviceId.trim());
+            String normalizedHost = host.trim();
+            String normalizedDeviceId = deviceId.trim();
+            deviceIdByHost.put(normalizedHost, normalizedDeviceId);
+            hostByDeviceId.put(normalizedDeviceId, normalizedHost);
         }
     }
 
@@ -87,6 +92,7 @@ public class RfidConnectionRegistry {
         }
         if (remoteHost != null) {
             deviceIdByHost.put(remoteHost, deviceId);
+            hostByDeviceId.put(deviceId, remoteHost);
         }
     }
 
@@ -94,9 +100,27 @@ public class RfidConnectionRegistry {
         RfidUnitConnection removed = byDeviceId.remove(deviceId);
         if (removed != null) {
             deviceIdByHost.entrySet().removeIf(e -> deviceId.equals(e.getValue()));
+            hostByDeviceId.remove(deviceId);
             removed.closeQuietly();
             log.info("RFID baglanti kaldirildi: deviceId={} (kalan {})", deviceId, byDeviceId.size());
         }
+    }
+
+    public void unregisterSocket(Socket socket) {
+        if (socket == null) {
+            return;
+        }
+        byDeviceId.entrySet().removeIf(entry -> {
+            boolean sameSocket = entry.getValue().socket() == socket;
+            if (sameSocket) {
+                String deviceId = entry.getKey();
+                deviceIdByHost.entrySet().removeIf(e -> deviceId.equals(e.getValue()));
+                hostByDeviceId.remove(deviceId);
+                log.info("RFID baglanti kaldirildi: deviceId={} (kalan {})", deviceId, byDeviceId.size());
+            }
+            return sameSocket;
+        });
+        closeQuietly(socket);
     }
 
     public boolean isAcceptingScans(String deviceId) {
@@ -149,13 +173,43 @@ public class RfidConnectionRegistry {
         log.info("RFID tarama {} ms kapali: deviceId={}", delay, deviceId);
     }
 
+    public void setReaderType(String deviceId, RfidReaderType readerType) {
+        if (deviceId != null && !deviceId.isBlank() && readerType != null) {
+            readerTypeByDeviceId.put(deviceId.trim(), readerType);
+        }
+    }
+
+    public RfidReaderType resolveReaderType(String deviceId, RfidReaderType eventType) {
+        if (deviceId != null && readerTypeByDeviceId.containsKey(deviceId)) {
+            return readerTypeByDeviceId.get(deviceId);
+        }
+        return eventType != null ? eventType : RfidReaderType.P4_NANO;
+    }
+
     public boolean sendToDevice(String deviceId, String line) {
         RfidUnitConnection c = byDeviceId.get(deviceId);
+        if (c == null) {
+            String host = hostByDeviceId.get(deviceId);
+            if (host != null) {
+                c = byDeviceId.values().stream()
+                        .filter(conn -> host.equals(conn.remoteHost()))
+                        .findFirst()
+                        .orElse(null);
+            }
+        }
         if (c == null) {
             log.warn("RFID yanit gonderilemedi — baglanti yok: deviceId={}", deviceId);
             return false;
         }
         return c.sendLine(line);
+    }
+
+    public void sendLinesToDevice(String deviceId, String... lines) {
+        for (String line : lines) {
+            if (line != null && !line.isBlank()) {
+                sendToDevice(deviceId, line);
+            }
+        }
     }
 
     private static void closeQuietly(Socket socket) {

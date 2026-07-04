@@ -44,8 +44,10 @@ public class SiteDataBootstrap implements ApplicationRunner {
             op.setOperationCode(def.getCode());
             op.setName(def.getName().trim());
             op.setOperationFee(def.getFee());
+            op.setDurationSeconds(def.getDurationSeconds() > 0 ? def.getDurationSeconds() : 30);
             operationRepository.save(op);
-            log.info("Operation synced: code={} name={} fee={}", op.getOperationCode(), op.getName(), op.getOperationFee());
+            log.info("Operation synced: code={} name={} fee={} durationSec={}",
+                    op.getOperationCode(), op.getName(), op.getOperationFee(), op.getDurationSeconds());
         }
     }
 
@@ -62,9 +64,13 @@ public class SiteDataBootstrap implements ApplicationRunner {
             device.setPlcBit(def.getPlcBit());
             device.setOperationId(operation.getId());
             device.setActive(def.isActive());
+            if (def.getReaderType() != null && !def.getReaderType().isBlank()) {
+                device.setReaderType(def.getReaderType().trim());
+            }
             deviceRepository.save(device);
-            log.info("Device synced: deviceId={} readerIp={} plcBit={} operationCode={}",
-                    device.getDeviceId(), device.getDeviceIp(), device.getPlcBit(), def.getOperationCode());
+            log.info("Device synced: deviceId={} readerIp={} plcBit={} operationCode={} readerType={}",
+                    device.getDeviceId(), device.getDeviceIp(), device.getPlcBit(), def.getOperationCode(),
+                    device.getReaderType());
         }
     }
 }

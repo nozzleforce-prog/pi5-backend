@@ -31,6 +31,7 @@ public class SiteConfigurationProperties {
         private int code;
         private String name;
         private int fee;
+        private int durationSeconds;
 
         public int getCode() {
             return code;
@@ -55,6 +56,14 @@ public class SiteConfigurationProperties {
         public void setFee(int fee) {
             this.fee = fee;
         }
+
+        public int getDurationSeconds() {
+            return durationSeconds;
+        }
+
+        public void setDurationSeconds(int durationSeconds) {
+            this.durationSeconds = durationSeconds;
+        }
     }
 
     public static class DeviceDef {
@@ -63,6 +72,15 @@ public class SiteConfigurationProperties {
         private int plcBit;
         private int operationCode;
         private boolean active = true;
+        private String readerType = "p4-nano";
+
+        public String getReaderType() {
+            return readerType;
+        }
+
+        public void setReaderType(String readerType) {
+            this.readerType = readerType;
+        }
 
         public String getDeviceId() {
             return deviceId;
