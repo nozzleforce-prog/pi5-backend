@@ -21,10 +21,10 @@ public class PlcBitService {
     @Value("${plc.mode-register:40001}")
     private int modeRegister;
 
-    @Value("${plc.state-register:40002}")
+    @Value("${plc.state-register:40003}")
     private int stateRegister;
 
-    @Value("${plc.time-register:40004}")
+    @Value("${plc.time-register:40002}")
     private int timeRegister;
 
     @Value("${plc.state-started-bit-value:1}")

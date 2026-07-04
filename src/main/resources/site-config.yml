@@ -4,7 +4,7 @@ site:
     - code: 1
       name: water
       fee: 100
-      duration-seconds: 45
+      duration-seconds: 5
     - code: 2
       name: foam
       fee: 150
@@ -25,25 +25,25 @@ site:
     - device-id: "1"
       reader-ip: 169.254.179.2
       reader-type: p4-nano
-      plc-bit: 1
+      plc-bit: 0
       operation-code: 4
       active: true
     # Dummy placeholders — P4 buton 2/3/4; donanim baglaninca active: true yapin
     - device-id: "2"
       reader-ip: 169.254.179.2
       reader-type: p4-nano
-      plc-bit: 2
+      plc-bit: 1
       operation-code: 2
       active: true
     - device-id: "3"
       reader-ip: 169.254.179.2
       reader-type: p4-nano
-      plc-bit: 3
+      plc-bit: 2
       operation-code: 1
       active: true
     - device-id: "4"
       reader-ip: 169.254.179.2
       reader-type: p4-nano
-      plc-bit: 4
+      plc-bit: 3
       operation-code: 5
       active: true
