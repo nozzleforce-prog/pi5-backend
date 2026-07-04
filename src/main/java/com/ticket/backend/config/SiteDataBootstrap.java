@@ -38,8 +38,10 @@ public class SiteDataBootstrap implements ApplicationRunner {
     }
 
     private void syncOperations() {
+        prepareOperationCodeChanges();
         for (SiteConfigurationProperties.OperationDef def : siteConfig.getOperations()) {
-            Operation op = operationRepository.findByOperationCode(def.getCode())
+            Operation op = operationRepository.findByNameIgnoreCase(def.getName().trim())
+                    .or(() -> operationRepository.findByOperationCode(def.getCode()))
                     .orElseGet(Operation::new);
             op.setOperationCode(def.getCode());
             op.setName(def.getName().trim());
@@ -48,6 +50,17 @@ public class SiteDataBootstrap implements ApplicationRunner {
             operationRepository.save(op);
             log.info("Operation synced: code={} name={} fee={} durationSec={}",
                     op.getOperationCode(), op.getName(), op.getOperationFee(), op.getDurationSeconds());
+        }
+    }
+
+    private void prepareOperationCodeChanges() {
+        for (SiteConfigurationProperties.OperationDef def : siteConfig.getOperations()) {
+            operationRepository.findByNameIgnoreCase(def.getName().trim())
+                    .filter(op -> op.getOperationCode() != def.getCode())
+                    .ifPresent(op -> {
+                        op.setOperationCode(-100000 - def.getCode());
+                        operationRepository.save(op);
+                    });
         }
     }
 

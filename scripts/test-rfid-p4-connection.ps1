@@ -53,7 +53,9 @@ if (-not $SkipPortCleanup) {
 Write-Host ''
 Write-Host 'Step 4: Listen for P4-NANO (Ctrl+C to exit)...' -ForegroundColor Yellow
 Write-Host '  Expected connect: Merhaba PC, ESP32-P4-NANO baglandi!' -ForegroundColor DarkGray
-Write-Host '  After button+scan: MAKINE:1 KART:uid AD:name' -ForegroundColor DarkGray
+Write-Host '  Button press: DEVICE_ID:1 (or MAKINE:1)' -ForegroundColor DarkGray
+Write-Host '  Backend reply: OPERASYON:4 UCRET:250' -ForegroundColor DarkGray
+Write-Host '  After scan: uid only (legacy also supported: MAKINE:1 KART:uid)' -ForegroundColor DarkGray
 Write-Host '  Heartbeat: durum #N - kart calisiyor' -ForegroundColor DarkGray
 Write-Host ''
 

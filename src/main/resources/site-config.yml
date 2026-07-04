@@ -10,10 +10,14 @@ site:
       fee: 150
       duration-seconds: 60
     - code: 3
-      name: broom
+      name: wax
       fee: 250
       duration-seconds: 90
     - code: 4
+      name: broom
+      fee: 250
+      duration-seconds: 90
+    - code: 5
       name: automatic
       fee: 400
       duration-seconds: 120
@@ -22,7 +26,7 @@ site:
       reader-ip: 169.254.179.2
       reader-type: p4-nano
       plc-bit: 1
-      operation-code: 3
+      operation-code: 4
       active: true
     # Dummy placeholders — P4 buton 2/3/4; donanim baglaninca active: true yapin
     - device-id: "2"
@@ -41,5 +45,5 @@ site:
       reader-ip: 169.254.179.2
       reader-type: p4-nano
       plc-bit: 4
-      operation-code: 4
+      operation-code: 5
       active: true

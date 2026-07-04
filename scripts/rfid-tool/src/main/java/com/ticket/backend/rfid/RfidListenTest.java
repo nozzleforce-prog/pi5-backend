@@ -13,12 +13,18 @@ import java.util.regex.Pattern;
 /**
  * Minimal RFID TCP listener — RP2350 and ESP32-P4-NANO.
  * RP2350: deviceId,cardId or UID:...
- * P4-NANO: MAKINE:N KART:uid; connect/heartbeat lines ignored.
+ * P4-NANO: DEVICE_ID:N then cardId, legacy MAKINE:N KART:uid, or combined DEVICE:N ... KART:uid.
  */
 public final class RfidListenTest {
 
     private static final Pattern NANO_P4_SCAN = Pattern.compile(
             "MAKINE:(\\d+)\\s+KART:([^\\s]+)(?:\\s+AD:(.+))?",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern NANO_P4_COMBINED_SCAN = Pattern.compile(
+            ".*?(?:MAKINE|DEVICE|DEVICE_ID|DEVICEID|CIHAZ|CIHAZ_ID):(\\d+)\\b.*?(?:KART|CARD|UID):([^\\s]+).*",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern NANO_P4_DEVICE_SELECT = Pattern.compile(
+            "(?:MAKINE|DEVICE|DEVICE_ID|DEVICEID|CIHAZ|CIHAZ_ID):(\\d+)",
             Pattern.CASE_INSENSITIVE);
 
     public static void main(String[] args) throws Exception {
@@ -31,6 +37,7 @@ public final class RfidListenTest {
         System.out.println("  Listen   : 0.0.0.0:" + port);
         System.out.println("  Expected : " + expectedHost + " -> PC:" + port);
         System.out.println("  Protocol: RP2350 + ESP32-P4-NANO");
+        System.out.println("  New P4  : DEVICE_ID:N -> OPERASYON:N UCRET:N -> cardId");
         System.out.println("========================================");
         System.out.println();
 
@@ -74,6 +81,24 @@ public final class RfidListenTest {
             String cardId = p4.group(2).trim();
             String name = p4.groupCount() >= 3 && p4.group(3) != null ? p4.group(3).trim() : null;
             printScan(deviceId, cardId, name, remote, "P4-NANO");
+            return;
+        }
+
+        Matcher p4Combined = NANO_P4_COMBINED_SCAN.matcher(line);
+        if (p4Combined.matches()) {
+            String deviceId = p4Combined.group(1).trim();
+            String cardId = p4Combined.group(2).trim();
+            printScan(deviceId, cardId, null, remote, "P4-NANO");
+            return;
+        }
+
+        Matcher p4Device = NANO_P4_DEVICE_SELECT.matcher(line);
+        if (p4Device.matches()) {
+            System.out.println("  protocol : P4-NANO");
+            System.out.println("  type     : device selection");
+            System.out.println("  deviceId : " + p4Device.group(1).trim());
+            System.out.println("  response : OPERASYON:<id> UCRET:<fee> (backend only)");
+            System.out.println();
             return;
         }
 

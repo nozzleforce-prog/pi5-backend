@@ -5,7 +5,13 @@ package com.ticket.backend.rfid;
  */
 public final class NanoP4DeviceProtocol {
 
+    public static final int OPERATION_MESSAGE_ID = 3;
+
     private NanoP4DeviceProtocol() {
+    }
+
+    public static String operationLine(int operationId, int fee) {
+        return "OPERASYON:" + Math.max(0, operationId) + " UCRET:" + Math.max(0, fee);
     }
 
     public static String balanceLine(int balance) {

@@ -11,7 +11,12 @@ public class OperationResponse {
     private final int operationFee;
     private final int durationSeconds;
 
-    public OperationResponse(String id, int operationCode, String name, int operationFee, int durationSeconds) {
+    public OperationResponse(
+            String id,
+            int operationCode,
+            String name,
+            int operationFee,
+            int durationSeconds) {
         this.id = id;
         this.operationCode = operationCode;
         this.name = name;
