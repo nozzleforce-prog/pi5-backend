@@ -13,13 +13,14 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
 public class SecurityConfig {
 
-    @Value("${app.allowed.origin}")
-    private String allowedOrigin;
+    @Value("${app.allowed.origins:${app.allowed.origin:http://localhost:3000}}")
+    private String allowedOrigins;
 
     private final JwtAuthFilter jwtAuthFilter;
 
@@ -34,8 +35,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/tickets/validate", "/api/tickets/use").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/auth/register").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/tickets/*").hasAnyRole("ADMIN", "OPERATOR")
                         .requestMatchers(HttpMethod.POST, "/api/tickets", "/api/tickets/load-money").hasAnyRole("ADMIN", "OPERATOR")
                         .requestMatchers("/api/tickets/**").hasRole("ADMIN")
@@ -51,8 +52,19 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
+        if (origins.isEmpty()) {
+            origins = List.of("http://localhost:3000");
+        }
 
-        configuration.setAllowedOrigins(List.of(allowedOrigin));
+        if (origins.stream().anyMatch(origin -> origin.contains("*"))) {
+            configuration.setAllowedOriginPatterns(origins);
+        } else {
+            configuration.setAllowedOrigins(origins);
+        }
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Authorization"));

@@ -1,4 +1,5 @@
-# On tanimli operasyonlar ve cihazlar — uygulama basinda MongoDB'ye yazilir
+# On tanimli operasyonlar ve cihazlar — uygulama basinda MongoDB'ye yazilir.
+# Edit this file (or the Pi deploy copy site-config.pi5.yml) instead of SITE_* env vars.
 site:
   operations:
     - code: 1

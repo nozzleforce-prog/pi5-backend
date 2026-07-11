@@ -1,6 +1,5 @@
 package com.ticket.backend.controller;
 
-import com.ticket.backend.dto.request.CardDeviceRequest;
 import com.ticket.backend.dto.request.CreateTicketRequest;
 import com.ticket.backend.dto.request.LoadMoneyRequest;
 import com.ticket.backend.dto.request.UpdateTicketRequest;
@@ -12,7 +11,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/tickets")
@@ -34,22 +32,6 @@ public class TicketController {
     public ResponseEntity<TicketResponse> loadMoney(@RequestBody LoadMoneyRequest request) {
         Ticket ticket = ticketService.loadMoney(request.getRfidCardId(), request.getAmount());
         return ResponseEntity.ok(TicketResponse.from(ticket));
-    }
-
-    @PostMapping("/validate")
-    public ResponseEntity<Map<String, String>> validate(@RequestBody CardDeviceRequest request) {
-        TicketStatus status = ticketService.validateTicket(
-                request.getRfidCardId(),
-                request.getDeviceId());
-        return ResponseEntity.ok(Map.of("status", status.name()));
-    }
-
-    @PostMapping("/use")
-    public ResponseEntity<Map<String, String>> use(@RequestBody CardDeviceRequest request) {
-        String result = ticketService.useTicket(
-                request.getRfidCardId(),
-                request.getDeviceId());
-        return ResponseEntity.ok(Map.of("result", result));
     }
 
     @GetMapping
