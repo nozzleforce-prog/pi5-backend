@@ -1,11 +1,19 @@
-# Backend Dockerfile for demo app with Java 24
-FROM eclipse-temurin:24-jdk-alpine
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-24 AS build
+
+WORKDIR /workspace
+
+COPY pom.xml .
+RUN mvn -B -DskipTests dependency:go-offline
+
+COPY src ./src
+RUN mvn -B -DskipTests package
+
+FROM eclipse-temurin:24-jre
 
 WORKDIR /app
 
-# Copy the Spring Boot jar into the container
-COPY target/ticketBackend-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=build /workspace/target/ticketBackend-0.0.1-SNAPSHOT.jar /app/app.jar
 
-EXPOSE 8080
+EXPOSE 8080 2000
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

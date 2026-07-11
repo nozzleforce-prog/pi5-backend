@@ -35,6 +35,9 @@ public class UserService {
         if (request.getRole() == null) {
             throw new IllegalArgumentException("role is required");
         }
+        if (request.getRole() != UserRole.ADMIN && request.getRole() != UserRole.OPERATOR) {
+            throw new IllegalArgumentException("role must be ADMIN or OPERATOR");
+        }
         if (userRepository.findByUsername(request.getUsername()).isPresent()) {
             throw new IllegalArgumentException("Username already exists");
         }
